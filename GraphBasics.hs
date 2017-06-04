@@ -5,53 +5,44 @@ module GraphBasics where
 import Data.List (delete, foldl')
 import qualified Data.Map as Map
 
-type Vertex = Int
-type Edge = (Vertex, WeightedDestination)
-type Graph = Map.Map Vertex [WeightedDestination]
-type WeightedDestination = (Vertex, Int)
-type ShortestPathDistances = Map.Map Vertex Int
+data Edge v n l = Edge v v n l deriving (Eq, Show)
+type Graph v n l = Map.Map v [Edge v n l]
 
-makeEdge :: Vertex -> WeightedDestination -> Edge
-makeEdge vertex destination = (vertex, destination)
-
-insertEdge :: Graph -> Edge -> Graph
-insertEdge graph (from, (to, weight))
+insertEdge :: Ord v => Graph v n l -> Edge v n l -> Graph v n l
+insertEdge graph (Edge from to weight label)
   | Map.notMember to graph = Map.insert to [] addNewEdge
   | otherwise              = addNewEdge
-  where addNewEdge = Map.insertWith (++) from [(to, weight)] graph
+  where addNewEdge = Map.insertWith (++) from [Edge from to weight label] graph
 
-reverseEdge :: Edge -> Edge
-reverseEdge (from, (to, weight)) = (to, (from, weight))
+reverseEdge :: Edge v n l -> Edge v n l
+reverseEdge (Edge from to weight label) = Edge to from weight label
 
-graphFromEdges :: [Edge] -> Graph
+graphFromEdges :: Ord v => [Edge v n l] -> Graph v n l
 graphFromEdges edges = foldl' insertEdge Map.empty edges
 
-undirectedGraphFromEdges :: [Edge] -> Graph
+undirectedGraphFromEdges :: Ord v => [Edge v n l] -> Graph v n l
 undirectedGraphFromEdges edges = foldl' insertDoubleEdge Map.empty edges
 
-unweightedEdge :: (Vertex, Vertex) -> Edge
-unweightedEdge (from, to) = (from, (to, 1))
+unweightedEdge :: (a, a) -> Edge a Int String
+unweightedEdge (from, to) = Edge from to 1 "whatever"
 
-outDests :: Graph -> Vertex -> [WeightedDestination]
-outDests graph v = Map.findWithDefault [] v graph
+outEdges :: Ord v => Graph v n l -> v -> [Edge v n l]
+outEdges graph v = Map.findWithDefault [] v graph
 
-outEdges :: Graph -> Vertex -> [Edge]
-outEdges graph v = map (\(t, w) -> (v, (t, w))) $ outDests graph v
-
-deleteEdge :: Graph -> Edge -> Graph
-deleteEdge graph (f, wd) = case children of
+deleteEdge :: (Eq v, Ord v, Show v, Real n, Eq l) => Graph v n l -> Edge v n l -> Graph v n l
+deleteEdge graph edge = case children of
   [] -> error ("uh " ++ show f ++ "has no children what is this i dont even")
-  [wd] -> Map.delete f graph
-  _ -> Map.insert f (delete wd children) graph
-  where children = outDests graph f
+  [edge] -> Map.delete f graph
+  _      -> Map.insert f (delete edge children) graph
+  where children = outEdges graph f
+        Edge f _ _ _ = edge
 
 -- Maybe I should have undirected graph as its own type or something. This
 -- works for now.
-insertDoubleEdge :: Graph -> Edge -> Graph
+insertDoubleEdge :: Ord v => Graph v n l -> Edge v n l -> Graph v n l
 insertDoubleEdge graph edge = insertEdge tempGraph (reverseEdge edge)
   where tempGraph = insertEdge graph edge
 
-deleteDoubleEdge :: Graph -> Edge -> Graph
+deleteDoubleEdge :: (Eq v, Ord v, Show v, Real n, Eq l) => Graph v n l -> Edge v n l -> Graph v n l
 deleteDoubleEdge graph edge = deleteEdge tempGraph (reverseEdge edge)
   where tempGraph = deleteEdge graph edge
-
