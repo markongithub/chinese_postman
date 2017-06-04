@@ -1,36 +1,37 @@
 module ChinesePostman where
 
-import Debug.Trace
-import GraphBasics
 import qualified Data.Map as Map (elems)
+import qualified Data.Set as Set
+-- import Debug.Trace (trace)
+import GraphBasics
 
 -- I based this implementation on the example in
 -- http://www.geeksforgeeks.org/hierholzers-algorithm-directed-graph/
 
-data HierholzerState = HierholzerState { graph :: Graph 
-                                       , curPath :: [Vertex]
-                                       , circuit :: [Vertex] } deriving Show
+data HierholzerState v n l = HierholzerState { graph :: Graph v n l
+                                             , curPath :: [v]
+                                             , circuit :: [v] } deriving Show
 
-backtrack :: HierholzerState -> HierholzerState
+backtrack :: HierholzerState v n l -> HierholzerState v n l
 backtrack (HierholzerState graph0 curPath0 circuit0)
   | null curPath0 = error "Nowhere to backtrack!"
-  | trace ("backtracking from " ++ show (head curPath0)) False = undefined
+--  | trace ("backtracking from " ++ show (head curPath0)) False = undefined
   | otherwise = HierholzerState graph0 (tail curPath0) newCircuit
   where newCircuit = ((head curPath0):circuit0)
 
-advance :: HierholzerState -> HierholzerState
+advance :: (Eq l, Ord v, Real n, Show v) => HierholzerState v n l -> HierholzerState v n l
 advance (HierholzerState graph0 curPath0 circuit0)
-  | trace ("Advancing from " ++ show curVertex ++ " to " ++ show nextVertex) False = undefined
+--  | trace ("Advancing from " ++ show curVertex ++ " to " ++ show nextVertex) False = undefined
    | otherwise = HierholzerState newGraph newPath circuit0
   where curVertex = head curPath0
         nextEdge = head $ outEdges graph0 curVertex
         newGraph = deleteDoubleEdge graph0 nextEdge
-        (_, (nextVertex, _)) = nextEdge
+        Edge _ nextVertex _ _ = nextEdge
         newPath = (nextVertex:curPath0)
 
-hierholzer0 :: HierholzerState -> [Vertex]
+hierholzer0 :: (Eq l, Ord v, Real n, Show v) => HierholzerState v n l -> [v]
 hierholzer0 state
-  | trace ("circuit0: " ++ show circuit0) False = undefined
+--  | trace ("circuit0: " ++ show circuit0) False = undefined
   | allDone = revConcat curPath0 circuit0 -- no more edges, we are done
   | atDeadEnd = hierholzer0 $ backtrack state
   | otherwise = hierholzer0 $ advance state
@@ -39,7 +40,7 @@ hierholzer0 state
         atDeadEnd = null $ outEdges graph0 curVertex
         allDone = null graph0
 
-hierholzer :: Graph -> Vertex -> [Vertex]
+hierholzer :: (Eq l, Ord v, Real n, Show v) => Graph v n l -> v -> [v]
 hierholzer graph vertex
   | numOddDegrees == 2 && not (isOdd $ outDegree graph vertex) = error "A circuit must start from a vertex of odd degree"
   | numOddDegrees == 2 || numOddDegrees == 0 = proceed
@@ -50,17 +51,17 @@ hierholzer graph vertex
 isOdd :: Int -> Bool
 isOdd x = x `mod` 2 == 1
 
-countOddDegrees :: Graph -> Int
+countOddDegrees :: Graph v n l -> Int
 countOddDegrees graph = length $ filter isOdd $ map length $ Map.elems graph
 
-outDegree :: Graph -> Vertex -> Int
-outDegree graph vertex = length $ outDests graph vertex
+outDegree :: Ord v => Graph v n l -> v -> Int
+outDegree graph vertex = length $ outEdges graph vertex
 
-revConcat :: [a] -> [a] -> [a]
+revConcat :: [v] -> [v] -> [v]
 revConcat [] forward = forward
 revConcat (x:xs) forward = revConcat xs (x:forward)
 
-testGraph :: Graph
+testGraph :: Graph Int Int String
 testGraph = undirectedGraphFromEdges $ map unweightedEdge
   [ (0, 1)
   , (0, 3)
@@ -103,4 +104,3 @@ testGraph3 = undirectedGraphFromEdges $ map unweightedEdge
   , (3, 5)
   , (4, 5)
   ]
-
