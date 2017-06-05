@@ -2,6 +2,7 @@ module OSMWrapper where
 
 import Control.Lens (view)
 import Data.Geo.OSM (childrenL, foldChildren, idL, kL, latL, lonL, ndL, nodes, Node, NodeWayRelation, readOsmFile, refL, Way, tagsL, vL, ways)
+import Data.List (intercalate, nub)
 import qualified Data.Map as Map
 import Data.Map ((!))
 import qualified Data.Set as Set
@@ -53,11 +54,17 @@ graphFromOSMFile :: String -> IO (Graph String Float String)
 graphFromOSMFile path = fmap graphFromNWRs $ parseFileIO path
 
 betterNameVertex :: Graph String n String -> String -> String
-betterNameVertex graph v = let
+betterNameVertex graph vertex = let
   getLabel (Edge _ _ _ label) = label
-  streetNameSet = Set.fromList $ map getLabel $ outEdges graph v
-  in v ++ (show $ Set.toList streetNameSet)
- 
+  streetNames = nub $ map getLabel $ outEdges graph vertex
+  description = if (length streetNames == 1) then ("on " ++ streetNames!!0) else ("intersection of " ++ (intercalate ", " streetNames))
+  in vertex ++ ": " ++ description
+
+betterNamedGraph :: (Real n) => Graph String n String -> Graph String n String
+betterNamedGraph graph = let
+  relabelFunc v = betterNameVertex graph v
+  in relabelVertices graph relabelFunc
+
 getLatLong :: Node -> (Float, Float)
 getLatLong n = let
   parseMember f n = read $ view f n
