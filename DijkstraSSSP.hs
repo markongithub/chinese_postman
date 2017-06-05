@@ -9,6 +9,7 @@ import GraphBasics
 type DijkstraQueue v n l = Heap.MinPrioHeap n (Edge v n l)
 data SSSPAnswer v n l = SSSPAnswer {cost :: n, predecessor :: Maybe (Edge v n l)} deriving (Eq, Show)
 type SSSPCache v n l = Map.Map v (SSSPAnswer v n l)
+type APSPCache v n l = Map.Map v (SSSPCache v n l)
 
 dijkstra0 :: (Ord v, Real n, Show v, Show n, Show l) => Graph v n l -> DijkstraQueue v n l -> SSSPCache v n l -> Set.Set v -> SSSPCache v n l
 dijkstra0 graph queue output targets
@@ -62,3 +63,12 @@ tracePath cache source current path
       Just edge -> tracePath cache source predSource (edge : path)
         where Edge predSource _ _ _ = edge
 
+-- This only works if the edge weights are positive. Maybe I should put in
+-- a check for that.
+allPointsShortestPathLimited :: (Real n, Ord v, Show v, Show n, Show l) => Graph v n l -> Set.Set v -> APSPCache v n l
+allPointsShortestPathLimited graph targets = Map.fromSet (\s -> dijkstra graph s targets) targets
+
+allPointsShortestPath :: (Real n, Ord v, Show v, Show n, Show l) => Graph v n l -> APSPCache v n l
+allPointsShortestPath graph = let
+  allVertices = Set.fromList $ Map.keys graph
+  in allPointsShortestPathLimited graph allVertices
