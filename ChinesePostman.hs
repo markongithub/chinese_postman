@@ -1,9 +1,11 @@
 module ChinesePostman where
 
-import qualified Data.Map as Map (elems)
+import qualified Data.Map as Map
 import qualified Data.Set as Set
 -- import Debug.Trace (trace)
+import DijkstraSSSP
 import GraphBasics
+import Matching
 
 -- I based this implementation on the example in
 -- http://www.geeksforgeeks.org/hierholzers-algorithm-directed-graph/
@@ -104,3 +106,29 @@ testGraph3 = undirectedGraphFromEdges $ map unweightedEdge
   , (3, 5)
   , (4, 5)
   ]
+
+data NoLabel = NoLabel deriving (Eq, Show)
+
+verticesOfOddDegree :: Graph v n l -> [v]
+verticesOfOddDegree graph = map fst $ filter (isOdd . length . snd) $ Map.toList graph
+
+fakeEdgesFromSSSP :: v -> SSSPCache v n l -> [Edge v n NoLabel]
+fakeEdgesFromSSSP source sssp = let
+  answerToEdge (to, SSSPAnswer weight _) = Edge source to weight NoLabel
+  in map answerToEdge $ Map.toList sssp
+
+fakeGraphOfOddVertices :: (Real n, Ord v, Show v, Show n, Show l) => Graph v n l -> Graph v n NoLabel
+fakeGraphOfOddVertices graph = let
+  oddVertices = Set.fromList $ verticesOfOddDegree graph
+  apsp = allPointsShortestPathLimited graph oddVertices
+  cacheToEdges (from, cache) = fakeEdgesFromSSSP from cache
+  in graphFromEdges $ concat $ map cacheToEdges $ Map.toList apsp
+
+makeGraphEulerian :: (Real n, Ord v, Show v, Show n) => Graph v n String -> Graph v n String
+makeGraphEulerian graph = let
+  fakeGraph = fakeGraphOfOddVertices graph
+  matching = perfectMatching fakeGraph
+  relabel (Edge f t w l) = Edge f t w "virtual backtracker edge"
+  in case matching of
+    NoMatching -> error "we failed"
+    PerfectMatching edges _ -> foldl insertDoubleEdge graph $ map relabel edges
