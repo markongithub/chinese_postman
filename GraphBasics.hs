@@ -8,6 +8,12 @@ import qualified Data.Map as Map
 data Edge v n l = Edge v v n l deriving (Eq, Show)
 type Graph v n l = Map.Map v [Edge v n l]
 
+vertices :: Ord v => Graph v n l -> [v]
+vertices graph = Map.keys graph
+
+edges :: Graph v n l -> [Edge v n l]
+edges graph = concat $ Map.elems graph
+
 insertEdge :: Ord v => Graph v n l -> Edge v n l -> Graph v n l
 insertEdge graph (Edge from to weight label)
   | Map.notMember to graph = Map.insert to [] addNewEdge
@@ -46,3 +52,9 @@ insertDoubleEdge graph edge = insertEdge tempGraph (reverseEdge edge)
 deleteDoubleEdge :: (Eq v, Ord v, Show v, Real n, Eq l) => Graph v n l -> Edge v n l -> Graph v n l
 deleteDoubleEdge graph edge = deleteEdge tempGraph (reverseEdge edge)
   where tempGraph = deleteEdge graph edge
+
+relabelVertices :: (Ord v1, Ord v2, Real n) => Graph v1 n l -> (v1 -> v2) -> Graph v2 n l
+relabelVertices graph f = let
+  relabel (Edge from to w l) = Edge (f from) (f to) w l
+  in graphFromEdges $ map relabel $ edges graph
+
