@@ -66,7 +66,11 @@ tracePath cache source current path
 -- This only works if the edge weights are positive. Maybe I should put in
 -- a check for that.
 allPointsShortestPathLimited :: (Real n, Ord v, Show v, Show n, Show l) => Graph v n l -> Set.Set v -> APSPCache v n l
-allPointsShortestPathLimited graph targets = Map.fromSet (\s -> dijkstra graph s targets) targets
+allPointsShortestPathLimited graph targets = let
+  limitedSSSP source = let
+    rTargets = Set.delete source targets
+    in Map.filterWithKey (\k _ -> Set.member k rTargets) (dijkstra graph source rTargets)
+  in Map.fromSet limitedSSSP targets
 
 allPointsShortestPath :: (Real n, Ord v, Show v, Show n, Show l) => Graph v n l -> APSPCache v n l
 allPointsShortestPath graph = let
