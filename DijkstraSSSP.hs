@@ -3,29 +3,32 @@ module DijkstraSSSP where
 -- import Debug.Trace (trace, traceShowId)
 import qualified Data.Heap as Heap
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import GraphBasics
 
 type DijkstraQueue v n l = Heap.MinPrioHeap n (Edge v n l)
 data SSSPAnswer v n l = SSSPAnswer {cost :: n, predecessor :: Maybe (Edge v n l)} deriving (Eq, Show)
 type SSSPCache v n l = Map.Map v (SSSPAnswer v n l)
 
-dijkstra0 :: (Ord v, Real n, Show v, Show n, Show l) => Graph v n l -> DijkstraQueue v n l -> SSSPCache v n l -> Maybe v -> SSSPCache v n l
-dijkstra0 graph queue output target
+dijkstra0 :: (Ord v, Real n, Show v, Show n, Show l) => Graph v n l -> DijkstraQueue v n l -> SSSPCache v n l -> Set.Set v -> SSSPCache v n l
+dijkstra0 graph queue output targets
 --  | trace ("Current queue: " ++ show queue) False = undefined
 --  | trace ("Current cache: " ++ show output) False = undefined
+--  | trace ("Current targets: " ++ show targets) False = undefined
   | (Map.size graph) == (Map.size output) = output
   | otherwise = case nextInQueue of
     Nothing -> output
     Just ((totalCost, edge), rest) ->
 --      let Edge from to edgeCost _ = traceShowId edge
       let Edge from to newCost _ = edge
-          doNothing = dijkstra0 graph rest output target
+          doNothing = dijkstra0 graph rest output targets
           newQueue = foldl (queueEdge totalCost) rest (outEdges graph to)
           newAnswer = SSSPAnswer {cost = totalCost, predecessor = Just edge}
           newCache = Map.insert to newAnswer output
-          includeTo = dijkstra0 graph newQueue newCache target
-          in if (target == Just to)
-                then newCache
+          newTargets = Set.delete to targets
+          includeTo = dijkstra0 graph newQueue newCache newTargets
+          in if (Set.null targets)
+                then output
                 else if (Map.member to output) then doNothing else includeTo
   where nextInQueue = Heap.view queue
  
@@ -35,7 +38,7 @@ queueEdge baseCost queue (Edge from to edgeCost label)
   | otherwise = Heap.insert (newCost, (Edge from to edgeCost label)) queue
   where newCost = baseCost + edgeCost
   
-dijkstra :: (Real n, Ord v, Show v, Show n, Show l) => Graph v n l -> v -> Maybe v -> SSSPCache v n l
+dijkstra :: (Real n, Ord v, Show v, Show n, Show l) => Graph v n l -> v -> Set.Set v -> SSSPCache v n l
 dijkstra graph s t
   | otherwise = dijkstra0 graph initialQueue initialCache t
   where initialQueue = foldl (queueEdge 0)  Heap.empty (outEdges graph s)
@@ -44,7 +47,7 @@ dijkstra graph s t
 
 shortestPath :: (Real n, Ord v, Show v, Show n, Show l) => Graph v n l -> v -> v -> [Edge v n l]
 shortestPath graph source dest = let
-  sssp = dijkstra graph source (Just dest)
+  sssp = dijkstra graph source (Set.singleton dest)
   in tracePath sssp source dest []
  
 getPredecessor :: (Ord v, Show v) => SSSPCache v n l -> v -> Maybe (Edge v n l)
@@ -58,3 +61,4 @@ tracePath cache source current path
       Nothing -> error "Our path went dry. This should not happen."
       Just edge -> tracePath cache source predSource (edge : path)
         where Edge predSource _ _ _ = edge
+
