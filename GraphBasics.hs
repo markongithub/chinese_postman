@@ -35,6 +35,9 @@ unweightedEdge (from, to) = Edge from to 1 "whatever"
 outEdges :: Ord v => Graph v n l -> v -> [Edge v n l]
 outEdges graph v = Map.findWithDefault [] v graph
 
+neighbors :: Ord v => Graph v n l -> v -> [v]
+neighbors graph v = map (\(Edge _ t _ _) -> t) $ outEdges graph v
+
 deleteEdge :: (Eq v, Ord v, Show v, Real n, Eq l) => Graph v n l -> Edge v n l -> Graph v n l
 deleteEdge graph edge = case children of
   [] -> error ("uh " ++ show f ++ "has no children what is this i dont even")
