@@ -10,9 +10,10 @@ import Matching
 -- I based this implementation on the example in
 -- http://www.geeksforgeeks.org/hierholzers-algorithm-directed-graph/
 
-data HierholzerState v n l = HierholzerState { graph :: Graph v n l
-                                             , curPath :: [v]
-                                             , circuit :: [v] } deriving Show
+data HierholzerState v n l = HierholzerState {
+    graph :: Graph v n l
+  , curPath :: [Edge v n l]
+  , circuit :: [Edge v n l] } deriving Show
 
 backtrack :: HierholzerState v n l -> HierholzerState v n l
 backtrack (HierholzerState graph0 curPath0 circuit0)
@@ -25,30 +26,32 @@ advance :: (Eq l, Ord v, Real n, Show v) => HierholzerState v n l -> HierholzerS
 advance (HierholzerState graph0 curPath0 circuit0)
 --  | trace ("Advancing from " ++ show curVertex ++ " to " ++ show nextVertex) False = undefined
    | otherwise = HierholzerState newGraph newPath circuit0
-  where curVertex = head curPath0
+  where Edge _ curVertex _ _ = head curPath0
         nextEdge = head $ outEdges graph0 curVertex
         newGraph = deleteDoubleEdge graph0 nextEdge
-        Edge _ nextVertex _ _ = nextEdge
-        newPath = (nextVertex:curPath0)
+        newPath = (nextEdge:curPath0)
 
-hierholzer0 :: (Eq l, Ord v, Real n, Show v) => HierholzerState v n l -> [v]
+hierholzer0 :: (Eq l, Ord v, Real n, Show v) => HierholzerState v n l -> [Edge v n l]
 hierholzer0 state
 --  | trace ("circuit0: " ++ show circuit0) False = undefined
   | allDone = revConcat curPath0 circuit0 -- no more edges, we are done
   | atDeadEnd = hierholzer0 $ backtrack state
   | otherwise = hierholzer0 $ advance state
   where (HierholzerState graph0 curPath0 circuit0) = state
-        curVertex = head curPath0
+        Edge _ curVertex _ _  = head curPath0
         atDeadEnd = null $ outEdges graph0 curVertex
         allDone = null graph0
 
-hierholzer :: (Eq l, Ord v, Real n, Show v) => Graph v n l -> v -> [v]
+hierholzer :: (Eq l, Ord v, Real n, Show v) => Graph v n l -> v -> [Edge v n l]
 hierholzer graph vertex
   | numOddDegrees == 2 && not (isOdd $ outDegree graph vertex) = error "A circuit must start from a vertex of odd degree"
   | numOddDegrees == 2 || numOddDegrees == 0 = proceed
   | otherwise = error "this graph is non-Eulerian"
-  where proceed = hierholzer0 $ HierholzerState graph [vertex] []
+  where proceed = hierholzer0 $ HierholzerState newGraph [nextEdge] []
         numOddDegrees = countOddDegrees graph
+        -- this is terribly redundant please fix this
+        nextEdge = head $ outEdges graph vertex
+        newGraph = deleteDoubleEdge graph nextEdge
 
 isOdd :: Int -> Bool
 isOdd x = x `mod` 2 == 1
@@ -132,3 +135,6 @@ makeGraphEulerian graph = let
   in case matching of
     NoMatching -> error "we failed"
     PerfectMatching edges _ -> foldl insertDoubleEdge graph $ map relabel edges
+
+formatEdge :: Edge String n String -> String
+formatEdge (Edge from to _ label) = "Take " ++ label ++ " from " ++ from ++ " to " ++ to ++ "."
