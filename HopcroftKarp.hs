@@ -18,10 +18,24 @@ import GraphBasics
 -- any less efficient. I just keep the partition assignment in the "vertex
 -- state" and map from vertices to vertex states.
 data Partition = Pitcher | Catcher deriving (Eq, Ord, Show)
+data HKDistance = FiniteDistance Int | Infinity deriving (Eq, Show)
+
+-- I could use a "Maybe Int" where Nothing==infinity but this algorithm is
+-- already confusing so I think this will be more intuitive later.
+instance Ord HKDistance where
+  compare Infinity (FiniteDistance _) = GT
+  compare (FiniteDistance _) Infinity = LT
+  compare Infinity Infinity = EQ
+  compare (FiniteDistance d1) (FiniteDistance d2) = compare d1 d2
+
+onePlus :: HKDistance -> HKDistance
+onePlus Infinity = error "You can't onePlus infinity. Duh."
+onePlus (FiniteDistance d) = FiniteDistance (d + 1)
+
 data HKVertexState v = HKVertexState {
    vPartition :: Partition
  , vPair :: (Maybe v)
- , vDistance :: Maybe Int
+ , vDistance :: HKDistance
  } deriving (Eq, Ord, Show)
 
 -- A Hopcroft-Karp state includes the whole graph, the mapping from vertices to
@@ -30,7 +44,7 @@ data HKVertexState v = HKVertexState {
 -- ultra-strict type systems like I am!
 data HKState v n l = HKState { hkGraph :: Graph v n l
                              , hkMapping :: Map v (HKVertexState v)
-                             , hkDistNil :: Maybe Int }  deriving (Eq, Show)
+                             , hkDistNil :: HKDistance }  deriving (Eq, Show)
 
 -- partitionFromSet is an inner function of partition. After we have the set of
 -- all pitchers, partitionFromSet just does the ugly work of creating an
@@ -39,9 +53,9 @@ partitionFromSet :: (Ord v, Show v) => Graph v n l -> Set v -> HKState v n l
 partitionFromSet graph pitchers = let
   allEdges = edges graph
   membership v = if Set.member v pitchers then Pitcher else Catcher
-  transformVertex v = HKVertexState (membership v) Nothing Nothing
+  transformVertex v = HKVertexState (membership v) Nothing Infinity
   stateMap = Map.fromSet transformVertex (Set.fromList $ vertices graph)
-  in HKState graph stateMap Nothing
+  in HKState graph stateMap Infinity
 
 partition0 :: (Ord v, Show v) => Graph v n l -> Set v -> Set v -> Set v -> [v] -> HKState v n l
 -- By this time we've assigned all the vertices to one set or the other.
@@ -99,7 +113,7 @@ breadthFirstHK state = let
   HKState graph mapping distNil = state
   -- FIX THIS to mapping!v
   vState x = Map.findWithDefault (error "fuck") x mapping
-  initialDist x = if (isFree state x) then (Just 0) else Nothing
+  initialDist x = if (isFree state x) then (FiniteDistance 0) else Infinity
   newVState x = (mapping!x){vDistance = initialDist x}
   pitchers = filter (isPitcher state) $ vertices graph
   -- updateMap is the function we are going to fold to put all the new
@@ -108,19 +122,14 @@ breadthFirstHK state = let
   newMapping = foldr updateMap mapping pitchers 
   freePitchers = filter (isFree state) pitchers
   initialQueue = Sequence.fromList freePitchers
-  in breadthFirstHK0 (HKState graph newMapping Nothing) initialQueue
+  in breadthFirstHK0 (HKState graph newMapping Infinity) initialQueue
 
 breadthFirstHK0 :: (Ord v, Show v, Show n, Show l) => HKState v n l -> Seq v -> (Bool, HKState v n l)
 breadthFirstHK0 state queue
 --  | traceShow (mapping, queue, distNil) False = undefined
   -- when the queue is empty we just return whether or not distNil is infinite.
-  | Sequence.null queue = (distNil /= Nothing, state)
-  -- if dist[u] is infinite, just keep going
-  | distU == Nothing = ignoreU
-  -- if dist[u] is finite and distNil is infinite, then dist[u] < distNil
-  | distNil == Nothing = processU
-  -- and if they're both finite and dist[u] is smaller.
-  | fromJust distU < fromJust distNil = processU
+  | Sequence.null queue = (distNil /= Infinity, state)
+  | distU < distNil = processU
   | otherwise = ignoreU
   where u :< remainder = Sequence.viewl queue
         distU = vDistance $ mapping!u
@@ -128,14 +137,14 @@ breadthFirstHK0 state queue
         HKState graph mapping distNil = state
         -- if distNil is infinite and any of u's neighbors have Nil as a pairing
         -- we set distNil to distU+1
-        newDistNil = if (distNil == Nothing && any (\v -> (vPair $ mapping!v) == Nothing) (neighbors graph u)) then Just ((fromJust distU) + 1) else distNil
+        newDistNil = if (distNil == Infinity && any (isFree state) (neighbors graph u)) then (onePlus distU) else distNil
         -- get neighbors with pairings but with dist=Nothing
         shouldUpdate v = case (vPair $ mapping!v) of Nothing      -> False
-                                                     Just pairOfV -> (vDistance $ mapping!pairOfV) == Nothing
+                                                     Just pairOfV -> (vDistance $ mapping!pairOfV) == Infinity
         toUpdate = filter shouldUpdate (neighbors graph u)
         justPairOf neighbor = fromJust $ vPair $ mapping!neighbor
         -- helper function to set a distance for pairs of neighbors of u
-        updateMap neighbor m = Map.adjust (\s -> s{vDistance = Just ((fromJust distU) + 1)}) (justPairOf neighbor) m
+        updateMap neighbor m = Map.adjust (\s -> s{vDistance = onePlus distU}) (justPairOf neighbor) m
         newMapping = foldr updateMap mapping toUpdate
         -- add all the pairs of u's neighbors to the queue
         newQueue = foldl (|>) remainder $ map (\v -> fromJust $ vPair $ mapping!v) toUpdate
@@ -152,27 +161,22 @@ depthFirstHK0 :: (Ord v, Show v, Show n, Show l) => HKState v n l -> v -> [v] ->
 -- if we've gotten to the end of the neighbors, we set dist[u] to infinite and
 -- return False.
 depthFirstHK0 (HKState graph mapping distNil) u [] = let
-  newUEntry = (mapping!u){vDistance = Nothing}
+  newUEntry = (mapping!u){vDistance = Infinity}
   newMap = Map.insert u newUEntry mapping
   in (False, HKState graph newMap distNil)
 depthFirstHK0 state u (x:xs)
   | trace ("DFS " ++ show (u, distNil, mapping)) False = undefined
-  -- we're looking for "if Dist[ Pair_V[v] ] == Dist[u] + 1" so if distU or
-  -- distPX is infinite we should keep going.
-  | distU == Nothing = recurseXS
-  | distPX == Nothing = recurseXS
+  -- we're looking for "if Dist[ Pair_V[v] ] == Dist[u] + 1"
   -- if that equation holds, then we call DFS again for "lowerVerdict"
   -- if the DFS returns true, we can consider u and pairOfX a match.
-  | (justDistPX == justDistU + 1) && lowerVerdict = (True, makePairing)
+  | (distPX == onePlus distU) && lowerVerdict = (True, makePairing)
   | otherwise = recurseXS
   where
     HKState graph mapping distNil = state
     distU = vDistance (mapping!u)
-    justDistU = fromJust distU
     pairOfX = vPair (mapping!x)
     justPX = fromJust pairOfX
     distPX = if (pairOfX == Nothing) then distNil else vDistance (mapping!justPX)
-    justDistPX = fromJust distPX
     (lowerVerdict, newState) = depthFirstHK state pairOfX
     newUEntry = (mapping!u){vPair = Just x}
     newXEntry = (mapping!x){vPair = Just u}
