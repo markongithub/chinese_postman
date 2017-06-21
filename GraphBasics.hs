@@ -5,7 +5,7 @@ module GraphBasics where
 import Data.List (delete, foldl')
 import qualified Data.Map as Map
 
-data Edge v n l = Edge v v n l deriving (Eq, Show)
+data Edge v n l = Edge v v n l deriving (Eq, Ord, Show)
 type Graph v n l = Map.Map v [Edge v n l]
 
 vertices :: Ord v => Graph v n l -> [v]
